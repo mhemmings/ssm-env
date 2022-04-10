@@ -28,16 +28,23 @@ func Parse(path string) error {
 		Path:           aws.String(path),
 		WithDecryption: aws.Bool(true),
 	}
-	out, err := svc.GetParametersByPath(&input)
+	var internalErr error
+	err = svc.GetParametersByPathPages(&input, func(out *ssm.GetParametersByPathOutput, lastPage bool) bool {
+		for _, param := range out.Parameters {
+			name := strings.TrimPrefix(aws.StringValue(param.Name), path)
+			internalErr = os.Setenv(name, aws.StringValue(param.Value))
+			if internalErr != nil {
+				return false
+			}
+		}
+		return true
+	})
 	if err != nil {
 		return err
 	}
-	for _, param := range out.Parameters {
-		name := strings.TrimPrefix(aws.StringValue(param.Name), path)
-		err := os.Setenv(name, aws.StringValue(param.Value))
-		if err != nil {
-			return err
-		}
+	if internalErr != nil {
+		return internalErr
 	}
+
 	return nil
 }
